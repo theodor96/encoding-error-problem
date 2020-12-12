@@ -26,6 +26,8 @@ namespace
     InputCache inputCache(PREAMBLE_SIZE);
 
     InputReferenceCache inputReferenceCache(PREAMBLE_SIZE);
+
+    InputReferenceCachePosition nextInputPosition{};
 }
 
 bool isInputComputableAsCacheSum(Input input)
@@ -47,17 +49,15 @@ bool isPreambleComplete()
 
 auto& getNextInputReferenceLocation(Input nextInput)
 {
-    static InputReferenceCachePosition nextInputPosition{};
-
     auto& nextInputReference = inputReferenceCache[nextInputPosition];
 
-    ++nextInputPosition;
-    if (nextInputPosition == PREAMBLE_SIZE)
+    if (++nextInputPosition == PREAMBLE_SIZE)
     {
         nextInputPosition = 0;
     }
 
     nextInputReference.first = nextInput;
+
     return nextInputReference.second;
 }
 
@@ -101,29 +101,6 @@ Input findWeakInput(std::ifstream& inStream)
     return weakInput;
 }
 
-std::pair<Input, Input> findMinMax(InputList::const_iterator begin, InputList::const_iterator end)
-{
-    Input max{};
-    Input min = std::numeric_limits<Input>::max();
-
-    while (begin != end)
-    {
-        if (*begin < min)
-        {
-            min = *begin;
-        }
-
-        if (*begin > max)
-        {
-            max = *begin;
-        }
-
-        ++begin;
-    }
-
-    return std::make_pair(min, max);
-}
-
 Input findWeakMinMaxSum(Input target)
 {
     Input sum{};
@@ -142,8 +119,8 @@ Input findWeakMinMaxSum(Input target)
 
             if (sum == target)
             {
-                const auto [min, max] = findMinMax(leftItr, rightItr);
-                return min + max;
+                const auto [minItr, maxItr] = std::minmax_element(leftItr, rightItr);
+                return *minItr + *maxItr;
             }
         }
     }
