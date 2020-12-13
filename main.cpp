@@ -4,7 +4,7 @@
 #include <exception>
 #include <fstream>
 #include <iostream>
-#include <limits>
+#include <iterator>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -15,30 +15,28 @@ namespace
     constexpr const std::size_t PREAMBLE_SIZE = 25;
 
     using Input = std::uint64_t;
-    using InputList = std::vector<Input>;
     using InputCache = std::unordered_set<Input>;
     using InputReference = std::pair<Input, InputCache::const_iterator>;
-    using InputReferenceCache = std::vector<InputReference>;
-    using InputReferenceCachePosition = InputReferenceCache::size_type;
-
-    InputList inputList{};
+    using InputReferenceList = std::vector<InputReference>;
 
     InputCache inputCache(PREAMBLE_SIZE);
 
-    InputReferenceCache inputReferenceCache(PREAMBLE_SIZE);
-
-    InputReferenceCachePosition nextInputPosition{};
+    InputReferenceList inputReferenceList{};
 }
 
 bool isInputComputableAsCacheSum(Input input)
 {
-    return inputReferenceCache.cend() !=
-                   std::find_if(inputReferenceCache.cbegin(),
-                                inputReferenceCache.cend(),
+    return inputReferenceList.cend() !=
+                   std::find_if(std::prev(inputReferenceList.cend(), PREAMBLE_SIZE),
+                                inputReferenceList.cend(),
                                 [&input](const auto& inputReference)
                                 {
-                                    const auto differenceItr = inputCache.find(input - inputReference.first);
-                                    return differenceItr != inputCache.cend() && differenceItr != inputReference.second;
+                                    if (inputReference.first * 2 == input)
+                                    {
+                                        return false;
+                                    }
+
+                                    return inputCache.find(input - inputReference.first) != inputCache.cend();
                                 });
 }
 
@@ -47,50 +45,30 @@ bool isPreambleComplete()
     return inputCache.size() == PREAMBLE_SIZE;
 }
 
-auto& getNextInputReferenceLocation(Input nextInput)
+auto getUpdatedNextInputCacheLocation(Input nextInput)
 {
-    auto& nextInputReference = inputReferenceCache[nextInputPosition];
+    auto extractedCacheHandle = inputCache.extract(std::prev(inputReferenceList.cend(), PREAMBLE_SIZE)->second);
+    extractedCacheHandle.value() = nextInput;
 
-    if (++nextInputPosition == PREAMBLE_SIZE)
-    {
-        nextInputPosition = 0;
-    }
-
-    nextInputReference.first = nextInput;
-
-    return nextInputReference.second;
+    return inputCache.insert(std::move(extractedCacheHandle)).position;
 }
 
 Input findWeakInput(std::ifstream& inStream)
 {
-    // perhaps much more, but at least this much
-    //
-    inputList.reserve(PREAMBLE_SIZE);
-
     Input weakInput{};
     Input nextInput{};
 
+    inputReferenceList.reserve(PREAMBLE_SIZE);
     while (inStream >> nextInput)
     {
-        inputList.emplace_back(nextInput);
-
-        auto& nextInputReferenceLocation = getNextInputReferenceLocation(nextInput);
-        if (!isPreambleComplete())
+        if (!weakInput && isPreambleComplete() && !isInputComputableAsCacheSum(nextInput))
         {
-            nextInputReferenceLocation = inputCache.emplace(nextInput).first;
+            weakInput = nextInput;
         }
-        else
-        {
-            if (!weakInput && !isInputComputableAsCacheSum(nextInput))
-            {
-                weakInput = nextInput;
-            }
 
-            auto extractedCacheHandle = inputCache.extract(nextInputReferenceLocation);
-            extractedCacheHandle.value() = nextInput;
-
-            nextInputReferenceLocation = inputCache.insert(std::move(extractedCacheHandle)).position;
-        }
+        inputReferenceList.emplace_back(nextInput,
+                                        isPreambleComplete() ? getUpdatedNextInputCacheLocation(nextInput)
+                                                             : inputCache.emplace(nextInput).first);
     }
 
     if (!weakInput)
@@ -101,27 +79,33 @@ Input findWeakInput(std::ifstream& inStream)
     return weakInput;
 }
 
-Input findWeakMinMaxSum(Input target)
+Input findMinMaxSum(Input target)
 {
-    Input sum{};
-    for (auto rightItr = inputList.cbegin(), leftItr = rightItr; rightItr != inputList.cend();)
-    {
-        if (sum < target)
-        {
-            sum += *rightItr++;
-        }
-        else
-        {
-            while (sum > target && leftItr != rightItr)
-            {
-                sum -= *leftItr++;
-            }
+    auto leftItr = inputReferenceList.cbegin();
+    auto rightItr = inputReferenceList.cbegin();
 
-            if (sum == target)
-            {
-                const auto [minItr, maxItr] = std::minmax_element(leftItr, rightItr);
-                return *minItr + *maxItr;
-            }
+    Input sum{};
+    while (rightItr != inputReferenceList.cend())
+    {
+        while (sum < target && rightItr != inputReferenceList.cend())
+        {
+            sum += rightItr++->first;
+        }
+
+        while (sum > target && leftItr != rightItr)
+        {
+            sum -= leftItr++->first;
+        }
+
+        if (sum == target)
+        {
+            const auto [minItr, maxItr] = std::minmax_element(leftItr,
+                                                              rightItr,
+                                                              [](const auto& lhs, const auto& rhs)
+                                                              {
+                                                                  return lhs.first < rhs.first;
+                                                              });
+            return minItr->first + maxItr->first;
         }
     }
 
@@ -138,8 +122,7 @@ int main()
         std::cout << "Weak input = " << weakInput << '\n';
         inStream.close();
 
-        const auto weakMinMaxSum = findWeakMinMaxSum(weakInput);
-        std::cout << "Weak minmax sum = " << weakMinMaxSum << '\n';
+        std::cout << "Minmax sum = " << findMinMaxSum(weakInput) << '\n';
     }
     catch (const std::exception& ex)
     {
