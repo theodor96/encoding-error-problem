@@ -2,7 +2,7 @@
 
 AdventOfCode 2020 Day 9 link: [here](https://adventofcode.com/2020/day/9)
 
-### Dependencies/clone/build/run instructions:
+### Instructions:
 
 ```bash
 sudo apt install -y git g++ make
